@@ -116,7 +116,7 @@ If you use this framework in your research, please cite:
 
 ```
 @article{CTF2025,
-  title={The Causal Transparency Framework: Enhancing Model Interpretability Through Causal Reasoning},
+  title={The Causal Transparency Framework},
   author={Marko, John},
   journal={Journal of Transparent Machine Learning},
   year={2025}
