@@ -129,5 +129,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- This research was supported by [Your Institution]
+- This research was supported by University of Bradford 
 - Special thanks to contributors and collaborators
