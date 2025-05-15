@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 
@@ -20,6 +21,14 @@ try:
 except ImportError:
     XGBOOST_AVAILABLE = False
     print("XGBoost not available. Will use only LogisticRegression and RandomForest models.")
+
+try:
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    print("TensorFlow not available. DNN models will not be available.")
 
 from .causal_discovery import CausalDiscovery
 from .transparency_metrics import TransparencyMetrics
@@ -115,12 +124,50 @@ class CausalTransparencyFramework:
         
         return self.causal_graph
     
-    def train_models(self, test_size=0.2):
+    def _build_dnn_model(self, input_dim, hidden_layers=[64, 32], activation='relu', dropout_rate=0.3):
+        """
+        Build a Deep Neural Network model
+        
+        Args:
+            input_dim: Number of input features
+            hidden_layers: List of hidden layer sizes
+            activation: Activation function
+            dropout_rate: Dropout rate for regularization
+            
+        Returns:
+            keras.Model: Compiled DNN model
+        """
+        model = keras.Sequential()
+        
+        # Input layer
+        model.add(layers.InputLayer(input_shape=(input_dim,)))
+        
+        # Hidden layers with dropout
+        for units in hidden_layers:
+            model.add(layers.Dense(units, activation=activation))
+            model.add(layers.Dropout(dropout_rate))
+        
+        # Output layer for binary classification
+        model.add(layers.Dense(1, activation='sigmoid'))
+        
+        # Compile model
+        model.compile(
+            optimizer='adam',
+            loss='binary_crossentropy',
+            metrics=['accuracy']
+        )
+        
+        return model
+    
+    def train_models(self, test_size=0.2, dnn_epochs=50, dnn_batch_size=32, verbose=0):
         """
         Train predictive models using both causal and standard approaches.
         
         Args:
             test_size: Proportion of data to use for testing
+            dnn_epochs: Number of epochs for DNN training
+            dnn_batch_size: Batch size for DNN training
+            verbose: Verbosity level for DNN training
         
         Returns:
             Dict of trained models
@@ -143,6 +190,12 @@ class CausalTransparencyFramework:
         # Store split data for later use
         self.train_data = (X_train, y_train)
         self.test_data = (X_test, y_test)
+        
+        # Scale features for DNN (if available)
+        if TENSORFLOW_AVAILABLE:
+            self.scaler = StandardScaler()
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_test_scaled = self.scaler.transform(X_test)
         
         # Get causal parents (direct causes of target)
         parents = list(self.causal_graph.predecessors(self.target_col))
@@ -168,6 +221,26 @@ class CausalTransparencyFramework:
                 causal_xgb = xgb.XGBClassifier(random_state=self.random_state)
                 causal_xgb.fit(X_train[causal_features], y_train)
                 self.models['causal_xgb'] = causal_xgb
+            
+            # DNN on causal features (if available)
+            if TENSORFLOW_AVAILABLE:
+                # Get causal feature indices
+                causal_indices = [i for i, col in enumerate(X_train.columns) if col in causal_features]
+                X_train_causal = X_train_scaled[:, causal_indices]
+                
+                # Build and train causal DNN
+                causal_dnn = self._build_dnn_model(len(causal_indices))
+                causal_dnn.fit(
+                    X_train_causal, y_train,
+                    validation_split=0.2,
+                    epochs=dnn_epochs,
+                    batch_size=dnn_batch_size,
+                    verbose=verbose
+                )
+                
+                # Store model with feature indices
+                self.models['causal_dnn'] = causal_dnn
+                self.models['causal_dnn_features'] = causal_indices
         
         # Full models (using all features)
         # Logistic Regression
@@ -186,6 +259,19 @@ class CausalTransparencyFramework:
             full_xgb.fit(X_train, y_train)
             self.models['full_xgb'] = full_xgb
         
+        # DNN (if available)
+        if TENSORFLOW_AVAILABLE:
+            # Build and train full DNN
+            full_dnn = self._build_dnn_model(X_train_scaled.shape[1])
+            full_dnn.fit(
+                X_train_scaled, y_train,
+                validation_split=0.2,
+                epochs=dnn_epochs,
+                batch_size=dnn_batch_size,
+                verbose=verbose
+            )
+            self.models['full_dnn'] = full_dnn
+        
         # Evaluate all models
         self._evaluate_models()
         
@@ -194,23 +280,51 @@ class CausalTransparencyFramework:
     def _evaluate_models(self):
         """Evaluate all models and store performance metrics"""
         X_test, y_test = self.test_data
+        X_test_scaled = None
+        
+        # Scale test data for DNNs
+        if TENSORFLOW_AVAILABLE and hasattr(self, 'scaler'):
+            X_test_scaled = self.scaler.transform(X_test)
         
         for name, model in self.models.items():
+            if 'features' in name:
+                continue  # Skip feature indices entries
+                
             # Get features used by this model
             if name.startswith('causal_'):
                 # Get causal parents
                 parents = list(self.causal_graph.predecessors(self.target_col))
                 features = [p for p in parents if p in X_test.columns]
-                X_test_model = X_test[features]
+                
+                if 'dnn' in name and X_test_scaled is not None:
+                    # Use scaled data for DNN
+                    feature_indices = self.models.get(f'{name}_features', [])
+                    X_test_model = X_test_scaled[:, feature_indices]
+                else:
+                    X_test_model = X_test[features]
             else:
                 # Use all features
                 features = X_test.columns.tolist()
-                X_test_model = X_test
+                
+                if 'dnn' in name and X_test_scaled is not None:
+                    # Use scaled data for DNN
+                    X_test_model = X_test_scaled
+                else:
+                    X_test_model = X_test
             
             # Calculate performance metrics
             try:
                 y_pred = model.predict(X_test_model)
-                y_pred_proba = model.predict_proba(X_test_model)[:, 1]
+                
+                # For DNNs, convert probabilities to binary predictions
+                if 'dnn' in name:
+                    y_pred_proba = y_pred.flatten()
+                    y_pred = (y_pred_proba > 0.5).astype(int)
+                else:
+                    if hasattr(model, 'predict_proba'):
+                        y_pred_proba = model.predict_proba(X_test_model)[:, 1]
+                    else:
+                        y_pred_proba = y_pred
                 
                 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
                 
@@ -281,8 +395,16 @@ class CausalTransparencyFramework:
         
         # Calculate TE and CS for each model
         X_test, y_test = self.test_data
+        X_test_scaled = None
+        
+        # Scale test data for DNNs
+        if TENSORFLOW_AVAILABLE and hasattr(self, 'scaler'):
+            X_test_scaled = self.scaler.transform(X_test)
         
         for name, model in self.models.items():
+            if 'features' in name:
+                continue  # Skip feature indices entries
+                
             print(f"\nCalculating metrics for model: {name}")
             
             # Get features used by this model
@@ -290,10 +412,22 @@ class CausalTransparencyFramework:
                 # Get causal parents
                 parents = list(self.causal_graph.predecessors(self.target_col))
                 features = [p for p in parents if p in X_test.columns]
-                X_test_model = X_test[features]
+                
+                if 'dnn' in name and X_test_scaled is not None:
+                    # Use scaled data for DNN
+                    feature_indices = self.models.get(f'{name}_features', [])
+                    X_test_model = X_test_scaled[:, feature_indices]
+                else:
+                    X_test_model = X_test[features]
             else:
                 # Use all features
-                X_test_model = X_test
+                features = X_test.columns.tolist()
+                
+                if 'dnn' in name and X_test_scaled is not None:
+                    # Use scaled data for DNN
+                    X_test_model = X_test_scaled
+                else:
+                    X_test_model = X_test
             
             # Calculate TE
             te = tm.calculate_te(model, X_test_model, y_test)
@@ -323,14 +457,17 @@ class CausalTransparencyFramework:
         # Create a DataFrame from model performance
         df = []
         for model_name, metrics in self.model_performance.items():
-            df.append({
-                'Model': model_name,
-                'AUC': metrics.get('auc', 0),
-                'Accuracy': metrics.get('accuracy', 0),
-                'F1 Score': metrics.get('f1', 0),
-                'Features': metrics.get('n_features', 0),
-                'Causal': model_name.startswith('causal_')
-            })
+            if 'features' not in model_name:  # Skip feature indices entries
+                model_type = 'DNN' if 'dnn' in model_name else 'Traditional'
+                df.append({
+                    'Model': model_name,
+                    'AUC': metrics.get('auc', 0),
+                    'Accuracy': metrics.get('accuracy', 0),
+                    'F1 Score': metrics.get('f1', 0),
+                    'Features': metrics.get('n_features', 0),
+                    'Causal': model_name.startswith('causal_'),
+                    'Type': model_type
+                })
         
         df = pd.DataFrame(df)
         

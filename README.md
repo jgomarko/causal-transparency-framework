@@ -57,6 +57,17 @@ The CTF has been applied to:
    - Fairness evaluation
    - Bias mitigation
 
+## Features
+
+- **Causal Discovery**: Automated discovery of causal relationships in data
+- **Model Training**: Train both causal and standard ML models
+  - Supports Logistic Regression, Random Forest, XGBoost
+  - **NEW**: Deep Neural Network (DNN) support with TensorFlow/Keras
+- **Transparency Metrics**: Calculate CII, CCM, TE, and CS metrics
+- **Visualization**: Generate comprehensive visualizations and reports
+- **Model Comparison**: Compare traditional ML models with DNNs
+- **Extensibility**: Easy to extend with new models and metrics
+
 ## Installation
 
 ```bash
@@ -85,8 +96,21 @@ ctf = CausalTransparencyFramework(
     output_dir="./results"
 )
 
-# Run the complete pipeline
-ctf.run_complete_pipeline()
+# Discover causal structure
+ctf.discover_causal_structure()
+
+# Train models including DNNs
+models = ctf.train_models(
+    dnn_epochs=50,       # Number of epochs for DNN training
+    dnn_batch_size=32,   # Batch size for DNN training
+    verbose=1            # Show training progress
+)
+
+# Calculate transparency metrics
+metrics = ctf.calculate_transparency_metrics()
+
+# Generate report
+report_path = ctf.generate_report()
 ```
 
 ### Example Notebooks
@@ -100,13 +124,16 @@ ctf.run_complete_pipeline()
 ctf/
 ├── causal_discovery.py      # Causal structure learning algorithms
 ├── transparency_metrics.py  # CTF metrics implementation
-├── framework.py            # Main CTF implementation
+├── framework.py            # Main CTF implementation (with DNN support)
+├── framework_enhanced.py   # Enhanced framework with advanced DNN features
 ├── __init__.py             # Package initialization
 examples/
 ├── mimic_iii_example.ipynb  # Example for clinical data
 ├── compas_example.ipynb    # Example for criminal justice
+├── test_dnn_support.py     # Test script for DNN functionality
 data/                      # Sample datasets
-docs/                      # Documentation
+docs/
+├── dnn_support.md         # Documentation for DNN features
 tests/                     # Unit tests
 ```
 
