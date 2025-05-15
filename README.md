@@ -50,23 +50,10 @@ The CTF has been applied to:
 1. **Clinical Decision Support (MIMIC-III)**
    - Mortality prediction
    - Treatment recommendation
-   - Risk stratification
 
 2. **Criminal Justice (COMPAS)**
    - Recidivism prediction
    - Fairness evaluation
-   - Bias mitigation
-
-## Features
-
-- **Causal Discovery**: Automated discovery of causal relationships in data
-- **Model Training**: Train both causal and standard ML models
-  - Supports Logistic Regression, Random Forest, XGBoost
-  - **NEW**: Deep Neural Network (DNN) support with TensorFlow/Keras
-- **Transparency Metrics**: Calculate CII, CCM, TE, and CS metrics
-- **Visualization**: Generate comprehensive visualizations and reports
-- **Model Comparison**: Compare traditional ML models with DNNs
-- **Extensibility**: Easy to extend with new models and metrics
 
 ## Installation
 
