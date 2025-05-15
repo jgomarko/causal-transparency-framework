@@ -116,9 +116,9 @@ If you use this framework in your research, please cite:
 
 ```
 @article{CTF2025,
-  title={The Causal Transparency Framework},
-  author={Marko, John},
-  journal={Journal of Transparent Machine Learning},
+  title={The Causal Transparency Framework: A Multi-Metric Approach to Algorithmic Accountability},
+  author={Marko, John Gabriel O. and Neagu, Ciprian Daniel and Anand, P.B},
+  journal={},
   year={2025}
 }
 ```
